@@ -18,6 +18,7 @@ function init_board(size)
 	board.eases = {}
 	board.fall = {}
 	board.recent_clears = {}
+	board.chain = 0
 	
 	repeat
 		print("generating...")
@@ -86,7 +87,6 @@ function draw_board(cx, cy)
 					love.graphics.draw(gfx.tile_imgs[n], p[1] + ease_dx, p[2] + ease_dy)
 					if DEBUG then
 						love.graphics.print(board.fall[x][y], p[1] + ease_dx, p[2] + ease_dy)
-						love.graphics.print(board.eases[x][y].slide.el, p[1] + ease_dx, p[2] + ease_dy + TILE_SIZE/2)
 					end
 					-- print(ease_dx .. " " .. ease_dy)
 				else
@@ -108,22 +108,18 @@ function draw_board(cx, cy)
 		-- draw the corners...
 		local p_UL = pos_from_board(cx, cy, x, y)
 		-- print(col .. " " .. p_UL[1] .. " " .. p_UL[2])
-		if col < 1 or col > 3 then
-			print("col = " .. col .. "somehow??")
-		else
-			love.graphics.draw(gfx.clear_imgs[col]["UL"], p_UL[1], p_UL[2])
-			love.graphics.draw(gfx.clear_imgs[col]["UR"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2])
-			love.graphics.draw(gfx.clear_imgs[col]["DL"], p_UL[1], p_UL[2] + (h-1)*TILE_SIZE)
-			love.graphics.draw(gfx.clear_imgs[col]["DR"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2] + (h-1)*TILE_SIZE)
-			-- and then the edges...
-			for dy = 1,h-2 do
-				love.graphics.draw(gfx.clear_imgs[col]["L"], p_UL[1], p_UL[2] + dy*TILE_SIZE)
-				love.graphics.draw(gfx.clear_imgs[col]["R"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2] + dy*TILE_SIZE)
-			end
-			for dx = 1,w-2 do
-				love.graphics.draw(gfx.clear_imgs[col]["U"], p_UL[1] + dx*TILE_SIZE, p_UL[2])
-				love.graphics.draw(gfx.clear_imgs[col]["D"], p_UL[1] + dx*TILE_SIZE, p_UL[2] + (h-1)*TILE_SIZE)
-			end
+		love.graphics.draw(gfx.clear_imgs[col]["UL"], p_UL[1], p_UL[2])
+		love.graphics.draw(gfx.clear_imgs[col]["UR"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2])
+		love.graphics.draw(gfx.clear_imgs[col]["DL"], p_UL[1], p_UL[2] + (h-1)*TILE_SIZE)
+		love.graphics.draw(gfx.clear_imgs[col]["DR"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2] + (h-1)*TILE_SIZE)
+		-- and then the edges...
+		for dy = 1,h-2 do
+			love.graphics.draw(gfx.clear_imgs[col]["L"], p_UL[1], p_UL[2] + dy*TILE_SIZE)
+			love.graphics.draw(gfx.clear_imgs[col]["R"], p_UL[1] + (w-1)*TILE_SIZE, p_UL[2] + dy*TILE_SIZE)
+		end
+		for dx = 1,w-2 do
+			love.graphics.draw(gfx.clear_imgs[col]["U"], p_UL[1] + dx*TILE_SIZE, p_UL[2])
+			love.graphics.draw(gfx.clear_imgs[col]["D"], p_UL[1] + dx*TILE_SIZE, p_UL[2] + (h-1)*TILE_SIZE)
 		end
 	end
 	love.graphics.setColor(255, 255, 255, 255)
@@ -134,6 +130,19 @@ end
 
 
 function update_board(dt)
+	local falling_at_start = {}
+	-- basically my check for chaining is "was it falling before this clear"
+	-- since the falling variable gets reset in the gravity loop
+	-- and the clear loop happens after the gravity loop
+	-- i have to check if it was falling at the start of the update step
+	-- (since a check for clearing is that it's not easing, and if it's not easing then it's not falling)
+	for x = 1,board.size do
+		falling_at_start[x] = {}
+		for y = 1,board.size do
+			falling_at_start[x][y] = (board.fall[x][y] > 0)
+		end
+	end
+	
 	-- gravity loop
 	-- (gotta get all these eases set up before eases are updated)
 	for x = 1,board.size do
@@ -149,8 +158,9 @@ function update_board(dt)
 				elseif board[x][y] > 0 and not board.eases[x][y].slide then
 					board.fall[x][y] = 0
 				end
-			else
+			elseif not board.eases[x][y].slide then
 				board.fall[x][y] = 0
+				
 			end
 			-- and bring in new blocks along the top
 			if y == 1 then
@@ -167,6 +177,8 @@ function update_board(dt)
 	end
 	-- clear loop (gotta do this after gravity or else one gravity ease will end and the blocks will clear before the next gravity step)
 	local out = find_all_squares()
+	local change_chain = 0
+	local cleared_tiles = 0
 	for i = 1,#out do
 		local t = out[i]
 		-- first check if any of the squares involved are moving/in the middle of a rotation
@@ -182,16 +194,36 @@ function update_board(dt)
 		end
 		-- if not, then clear
 		if safe_clear then
-			t.color = board[t[1]][t[2]]
 			t.el = 0
+			local continues_chain = false
 			for x = t[1],t[1]+t[3]-1 do
 				for y = t[2],t[2]+t[4]-1 do
 					board[x][y] = 0
+					board.fall[x][y] = 0
+					if falling_at_start[x][y] then
+						continues_chain = true
+					end
 				end
 			end
+			cleared_tiles = cleared_tiles + ((t[3]-2) * (t[4]-2))
 			table.insert(board.recent_clears, t)
+			
+			-- basically: if this would continue the chain, change_chain = 1 (mark the chain to be incremented);
+			-- if not, then set it to -1 (marks the chain to reset at 1), but chain-continues take precendence because thats what panel de pon does and its sick (lets a manual clear at the same time as a chain continue the chain)
+			if continues_chain then
+				change_chain = 1
+			elseif change_chain == 0 then
+				change_chain = -1
+			end
 		end
 	end
+	if change_chain == 1 then
+		board.chain = board.chain + 1
+	elseif change_chain == -1 then
+		board.chain = 1
+	end
+	
+	score = score + (100 * cleared_tiles * math.pow(board.chain, 2))
 	
 	-- update all eases
 	for x = 1,board.size do
@@ -213,6 +245,8 @@ function update_board(dt)
 			table.remove(board.recent_clears, i)
 		end
 	end
+	
+	-- return cleared_tiles
 end
 
 
@@ -323,7 +357,7 @@ function find_all_squares()
 						end
 						-- if continue is still active, then we found it.
 						if continue then
-							table.insert(found_squares, {x, y, w, h})
+							table.insert(found_squares, {x, y, w, h, color=board[x][y]})
 						end -- END CASCADE
 					end
 				end

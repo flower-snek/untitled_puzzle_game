@@ -19,11 +19,12 @@ FALL_FRAME_DATA = {10, 5, 4, 3, 3, 3, 3, 2, 2, 2, 2, 2} -- infinite 1s
 CLEAR_LINGER_FRAMES = 60
 CLEAR_SOLID_FRAMES = 15 -- todo implement?
 
-DEBUG = false
+DEBUG = true
 
 
 -- GLOBALS
 gfx = {}
+score = 0
 -- keys = {}
 
 function love.load()
@@ -41,6 +42,7 @@ function love.draw()
 	h = love.graphics.getHeight()
 	draw_board(w/2, h/2)
 	love.graphics.print("FPS: " .. love.timer.getFPS(), 0, 0)
+	love.graphics.print("Score: " .. score, w/2, h*7/8)
 end
 
 function love.keypressed(key)
