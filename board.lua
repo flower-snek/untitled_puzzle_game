@@ -21,7 +21,9 @@ function init_board(size)
 	board.chain = 0
 	
 	repeat
-		print("generating...")
+		if DEBUG then
+			print("generating...")
+		end
 		for x = 1,size do
 			board[x] = {}
 			board.eases[x] = {}
@@ -215,6 +217,10 @@ function update_board(dt)
 			elseif change_chain == 0 then
 				change_chain = -1
 			end
+			
+			if DEBUG then
+				print("  " .. t[3] .. " x " .. t[4])
+			end
 		end
 	end
 	if change_chain == 1 then
@@ -222,9 +228,12 @@ function update_board(dt)
 	elseif change_chain == -1 then
 		board.chain = 1
 	end
-	
-	score = score + (100 * cleared_tiles * math.pow(board.chain, 2))
-	
+	if cleared_tiles > 0 then
+		if DEBUG then
+			print(cleared_tiles .. " tiles x (" .. board.chain .. " chain ^ 2) x 100 = " .. (100 * cleared_tiles * math.pow(board.chain, 2)) .. "pts")
+		end
+		score = score + (100 * cleared_tiles * math.pow(board.chain, 2))
+	end
 	-- update all eases
 	for x = 1,board.size do
 		for y = 1,board.size do

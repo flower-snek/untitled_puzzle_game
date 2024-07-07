@@ -1,4 +1,6 @@
 
+-- The Eases
+
 function linear(start, ending, cur_time)
 	return (cur_time - start) / (ending - start)
 end
