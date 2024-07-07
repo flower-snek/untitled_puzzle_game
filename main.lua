@@ -90,6 +90,11 @@ function love.keypressed(key)
 			init_time_trial(60)
 		end
 	end
+	
+	
+	if key == "p" then
+		deal_damage(10)
+	end
 	--[[
 	if DEBUG then
 		local out = find_all_squares()
@@ -118,4 +123,5 @@ function load_graphics()
 		end
 	end
 	gfx.cursor = love.graphics.newImage("gfx/cursor.png")
+	gfx.tile_lock = love.graphics.newImage("gfx/locked.png")
 end

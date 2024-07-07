@@ -79,20 +79,28 @@ function draw_board(cx, cy)
 	for x = 1,board.size do
 		for y = 1,board.size do
 			local n = board[x][y]
+			local lock = false
+			if n > 3 then
+				n = n - 3
+				lock = true
+			end
 			local p = pos_from_board(cx, cy, x, y)
 			if n > 0 then
+				local ease_dx = 0
+				local ease_dy = 0
 				if board.eases[x][y].slide then
 					local ease = board.eases[x][y].slide
 					local ease_val = ease.es(0, ease.l, ease.el)
-					local ease_dx = (((ease.ex - ease.sx) * ease_val) + ease.sx) * TILE_SIZE
-					local ease_dy = (((ease.ey - ease.sy) * ease_val) + ease.sy) * TILE_SIZE
-					love.graphics.draw(gfx.tile_imgs[n], p[1] + ease_dx, p[2] + ease_dy)
-					if DEBUG then
-						love.graphics.print(board.fall[x][y], p[1] + ease_dx, p[2] + ease_dy)
-					end
+					ease_dx = (((ease.ex - ease.sx) * ease_val) + ease.sx) * TILE_SIZE
+					ease_dy = (((ease.ey - ease.sy) * ease_val) + ease.sy) * TILE_SIZE
 					-- print(ease_dx .. " " .. ease_dy)
-				else
-					love.graphics.draw(gfx.tile_imgs[n], p[1], p[2])
+				end
+				love.graphics.draw(gfx.tile_imgs[n], p[1] + ease_dx, p[2] + ease_dy)
+				if lock then
+					love.graphics.draw(gfx.tile_lock, p[1] + ease_dx, p[2] + ease_dy)
+				end
+				if DEBUG then
+					love.graphics.print(board.fall[x][y], p[1] + ease_dx, p[2] + ease_dy)
 				end
 			end
 		end
@@ -197,9 +205,14 @@ function update_board(dt)
 		-- if not, then clear
 		if safe_clear then
 			t.el = 0
+			local tlx = t[1]
+			local tly = t[2]
+			local w = t[3]
+			local h = t[4]
+			
 			local continues_chain = false
-			for x = t[1],t[1]+t[3]-1 do
-				for y = t[2],t[2]+t[4]-1 do
+			for x = tlx,tlx+w-1 do
+				for y = tly,tly+h-1 do
 					board[x][y] = 0
 					board.fall[x][y] = 0
 					if falling_at_start[x][y] then
@@ -207,7 +220,7 @@ function update_board(dt)
 					end
 				end
 			end
-			cleared_tiles = cleared_tiles + ((t[3]-2) * (t[4]-2))
+			cleared_tiles = cleared_tiles + ((w-2) * (h-2))
 			table.insert(board.recent_clears, t)
 			
 			-- basically: if this would continue the chain, change_chain = 1 (mark the chain to be incremented);
@@ -219,7 +232,25 @@ function update_board(dt)
 			end
 			
 			if DEBUG then
-				print("  " .. t[3] .. " x " .. t[4])
+				print("  " .. w .. " x " .. h)
+			end
+			
+			-- ok also now, remove locks from adjacent blocks
+			for dy=0,h-1 do
+				if tlx > 1 and board[tlx-1][tly+dy] > 3 then
+					board[tlx-1][tly+dy] = board[tlx-1][tly+dy] - 3
+				end
+				if tlx+w <= board.size and board[tlx+w][tly+dy] > 3 then
+					board[tlx+w][tly+dy] = board[tlx+w][tly+dy] - 3
+				end
+			end
+			for dx=0,w-1 do
+				if tly > 1 and board[tlx+dx][tly-1] > 3 then
+					board[tlx+dx][tly-1] = board[tlx+dx][tly-1] - 3
+				end
+				if tly+h <= board.size and board[tlx+dx][tly+h] > 3 then
+					board[tlx+dx][tly+h] = board[tlx+dx][tly+h] - 3
+				end
 			end
 		end
 	end
@@ -283,9 +314,15 @@ function rotate_at_cursor(dir)
 	-- actually, correction: if any of the four are mid-FALL i should probably not do it
 	local x = cursor.x
 	local y = cursor.y
+	-- cant rotate falling tiles
 	if board.fall[x][y] ~= 0 or board.fall[x][y+1] ~= 0 or board.fall[x+1][y+1]  ~= 0 or board.fall[x+1][y]  ~= 0 then
 		return
 	end
+	-- cant rotate locked tiles
+	if board[x][y] > 3 or board[x][y+1] > 3 or board[x+1][y+1] > 3 or board[x+1][y] > 3 then
+		return
+	end
+	
 	if dir == 1 then -- clockwise
 		local temp = board[x][y]
 		board[x][y] = board[x][y+1]
@@ -344,14 +381,17 @@ function find_all_squares()
 					-- uh how do i do this
 					-- first check if all corners are the same, then the spaces between them? 
 					-- i feel like that'll be faster in this instance since its unlikely for the corners to be set up already but thats just a gut instinct
-					if board[x][y] ~= 0 and board[x][y] == board[x][y+h-1] and board[x][y] == board[x+w-1][y] and board[x][y] == board[x+w-1][y+h-1] then
+					if board[x][y] ~= 0 and equal_tiles(x, y, x, y+h-1) and equal_tiles(x, y, x+w-1, y) and equal_tiles(x, y, x+w-1, y+h-1) then
 						-- ok we have a candidate
 						local col = board[x][y]
+						if col > 3 then
+							col = col - 3
+						end
 						local continue = true
 						-- now check dx = 0 and dx = w-1...
 						for dy = 1,h-2 do
 							if continue then
-								if board[x][y+dy] ~= col or board[x + w-1][y+dy] ~= col then
+								if not equal_tiles(x, y, x, y+dy) or not equal_tiles(x, y, x + w-1, y+dy) then
 									continue = false
 								end
 							end
@@ -359,14 +399,14 @@ function find_all_squares()
 						-- and dy = 0 and dy = h-1:
 						for dx = 1,w-2 do
 							if continue then
-								if board[x+dx][y] ~= col or board[x+dx][y + h-1] ~= col then
+								if not equal_tiles(x, y, x+dx, y) or not equal_tiles(x, y, x+dx, y + h-1) then
 									continue = false
 								end
 							end
 						end
 						-- if continue is still active, then we found it.
 						if continue then
-							table.insert(found_squares, {x, y, w, h, color=board[x][y]})
+							table.insert(found_squares, {x, y, w, h, color=col})
 						end -- END CASCADE
 					end
 				end
@@ -378,8 +418,44 @@ end
 
 
 
+function equal_tiles(x1, y1, x2, y2)
+	local t1 = board[x1][y1]
+	local t2 = board[x2][y2]
+	if t1 > 3 then
+		t1 = t1 - 3
+	end
+	if t2 > 3 then
+		t2 = t2 - 3
+	end
+	return t1 == t2
+end
+
+
+
 function add_slide_ease(x, y, start_dx, start_dy, end_dx, end_dy, length, ease_func)
 	-- slide eases - simple movement of a tile
 	-- sx, sy, ex, ey, l (all self-explainatory), el (elapsed time), es
 	board.eases[x][y].slide = {sx = start_dx, sy = start_dy, ex = end_dx, ey = end_dy, l = length, el = 0, es = ease_func}
+end
+
+
+
+function deal_damage(n)
+	-- get list of all spots that are not already locked
+	local locations = {}
+	for x=1,board.size do
+		for y=1,board.size do
+			if board[x][y] > 0 and board[x][y] <= 3 then
+				table.insert(locations, {x, y})
+			end
+		end
+	end
+	
+	for i=1,n do
+		if #locations > 0 then
+			local new = math.random(1, #locations)
+			board[locations[new][1]][locations[new][2]] = board[locations[new][1]][locations[new][2]] + 3
+			table.remove(locations, new)
+		end
+	end
 end
