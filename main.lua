@@ -4,7 +4,8 @@ TODO LIST:
 - ~~"damage" in whatever form i choose (frozen blocks? clearing adjacent unfreezes, clearing with them inside removes, can't rotate?)~~ done
 - menuing
 - alternate damage idea (block is directly sent over - how are combos treated?
-  - refactor locked pieces to allow multiple locks on one piece? (+ graphics)
+  - ~~refactor locked pieces to allow multiple locks on one piece? (+ graphics)~~ done
+  - better graphics oh my GOD
 - ~~time trial modes?~~ kinda done
   - leaderboards?
 - survival mode?
@@ -117,7 +118,7 @@ function love.keypressed(key)
 		
 		-- todo remove
 		if key == "p" then
-			deal_damage(10)
+			deal_damage_rand(10)
 		end
 	end
 	if cur_screen == Screen.MAIN_MENU then
@@ -158,7 +159,10 @@ function load_graphics()
 		end
 	end
 	gfx.cursor = love.graphics.newImage("gfx/cursor.png")
-	gfx.tile_lock = love.graphics.newImage("gfx/locked.png")
+	gfx.tile_lock = {}
+	for i = 1,5 do
+		 gfx.tile_lock[i] = love.graphics.newImage("gfx/locked"..i..".png")
+	end
 end
 
 
